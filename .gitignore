@@ -31,3 +31,22 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Project-local Android files
+egg-ledger-android/.gradle/
+egg-ledger-android/.idea/
+egg-ledger-android/local.properties
+egg-ledger-android/app/build/
+egg-ledger-android/build/
+egg-ledger-android/app/release/
+egg-ledger-android/app/src/main/assets/
+egg-ledger-android/key.properties
+*.aab
+
+# Personal exports and backups
+exports/
+*.csv
+
+# OS files
+.DS_Store
+Thumbs.db

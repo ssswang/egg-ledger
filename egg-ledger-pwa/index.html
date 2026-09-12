@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#163a2d" />
+    <meta name="description" content="本地记录领鸡蛋次数和统计" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>鸡蛋账本</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">EGG LEDGER</p>
+          <h1>🍳 鸡蛋账本</h1>
+        </div>
+        <button id="settingsButton" class="icon-button" aria-label="设置">⚙</button>
+      </header>
+
+      <section class="today-heading">
+        <p id="todayLabel">今天</p>
+        <span id="timezoneLabel">北京时间（UTC+8）</span>
+      </section>
+
+      <section class="card record-card" aria-labelledby="recordTitle">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">NEW RECORD</p>
+            <h2 id="recordTitle">📝 记一笔领取</h2>
+          </div>
+          <span class="timestamp" id="liveTimestamp"></span>
+        </div>
+        <form id="recordForm">
+          <label for="eggInput">本次鸡蛋数量</label>
+          <div class="input-row">
+            <input id="eggInput" inputmode="decimal" autocomplete="off" type="text" placeholder="例如 1.3，失败填 -1" maxlength="12" />
+            <button type="submit">提交</button>
+          </div>
+          <p class="hint">可输入非负数或小数。-1 会记为消费 1 个鸡蛋；0 为攒攒手气；正数为领取成功。</p>
+        </form>
+      </section>
+
+      <section class="last-record" aria-label="上次领取">
+        <div class="last-record-icon">◷</div>
+        <div class="last-record-content">
+          <p class="eyebrow">LAST SUCCESSFUL COLLECTION</p>
+          <p id="lastRecordTitle" class="last-record-title">还没有成功领取记录</p>
+          <p id="lastRecordTime" class="last-record-time">提交成功记录后会显示在这里</p>
+        </div>
+        <strong id="lastRecordAge" class="last-record-age">—</strong>
+      </section>
+
+      <section class="card summary-card" aria-labelledby="summaryTitle">
+        <div class="section-title"><div><p class="eyebrow">TODAY'S HAUL</p><h2 id="summaryTitle">📅 今日汇总</h2></div><button id="moreStatsButton" class="secondary-button" type="button">📊 更多统计</button></div>
+        <div class="summary-grid">
+          <div><span>今日鸡蛋</span><strong id="todayEggs">0</strong></div>
+          <div><span>每次平均</span><strong id="todayAverage">—</strong></div>
+          <div><span>今日成功 / 尝试</span><strong id="todayCounts">0 / 0</strong></div>
+          <div><span>24 小时成功 / 尝试</span><strong id="hoursCounts">0 / 0</strong></div>
+        </div>
+      </section>
+
+      <section class="best-record-card" aria-label="历史单次最多">
+        <div><p class="eyebrow">PERSONAL BEST</p><h2>历史单次最多 🏆</h2><p id="singleBestTime" class="best-record-time">暂无成功记录</p></div>
+        <div class="best-record-value"><span>最高领取</span><strong id="singleBest">0</strong><small>个鸡蛋</small></div>
+      </section>
+
+      <section class="card history-card" aria-labelledby="historyTitle">
+        <div class="section-title history-top">
+          <div><p class="eyebrow">HISTORY</p><h2 id="historyTitle">🗂️ 领取历史</h2></div>
+          <div class="history-actions"><button id="importButton" class="secondary-button">📥 导入 CSV</button><button id="exportButton" class="secondary-button">📤 导出 CSV</button></div>
+        </div>
+        <div class="filters">
+          <input id="dateFilter" type="date" aria-label="按日期筛选" />
+          <select id="statusFilter" aria-label="按状态筛选">
+            <option value="all">全部状态</option>
+            <option value="success">领取成功</option>
+            <option value="failure">失败记录</option>
+          </select>
+          <button id="clearFilterButton" class="text-button" type="button">清除筛选</button>
+        </div>
+        <div class="history-view-switch" role="group" aria-label="历史视图模式">
+          <button type="button" class="view-button active" data-history-view="list">全部记录</button>
+          <button type="button" class="view-button" data-history-view="success">成功视图</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+        <input id="importFileInput" type="file" accept="text/csv,.csv" hidden />
+      </section>
+    </main>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" id="settingsForm">
+        <div class="dialog-title"><h2>记录时区</h2><button id="closeSettingsButton" type="button" class="icon-button" aria-label="关闭">×</button></div>
+        <p>日期与“今天”的计算按此时区进行。首次使用默认北京时间。</p>
+        <label for="timezoneSelect">时区</label>
+        <select id="timezoneSelect">
+          <option value="Asia/Shanghai">北京时间（UTC+8）</option>
+          <option value="Asia/Tokyo">日本标准时间（UTC+9）</option>
+          <option value="Asia/Singapore">新加坡时间（UTC+8）</option>
+          <option value="America/New_York">美国东部时间</option>
+          <option value="America/Los_Angeles">美国太平洋时间</option>
+          <option value="Europe/London">英国时间</option>
+          <option value="UTC">协调世界时（UTC）</option>
+        </select>
+        <button id="saveSettingsButton" value="default" class="wide-button">保存时区</button>
+      </form>
+    </dialog>
+    <dialog id="editDialog">
+      <form method="dialog" id="editForm">
+        <div class="dialog-title"><h2>修改领取记录</h2><button id="closeEditButton" type="button" class="icon-button" aria-label="关闭">×</button></div>
+        <label for="editEggInput">鸡蛋数量</label>
+        <input id="editEggInput" inputmode="decimal" autocomplete="off" type="text" maxlength="12" />
+        <label for="editTimeInput">领取时间</label>
+        <input id="editTimeInput" type="datetime-local" step="1" />
+        <p class="hint">填写 -1 代表消费 1 个鸡蛋；0 为攒攒手气；正数（可带小数）代表领取成功。时间按当前选择的记录时区理解。</p>
+        <button value="default" class="wide-button">保存修改</button>
+      </form>
+    </dialog>
+    <dialog id="statsDialog">
+      <section class="statistics-dialog" aria-labelledby="statsDialogTitle">
+        <div class="dialog-title"><div><p class="eyebrow">MORE STATISTICS</p><h2 id="statsDialogTitle">📊 更多统计</h2></div><button id="closeStatsButton" type="button" class="icon-button" aria-label="关闭">×</button></div>
+        <section class="stats-section" aria-labelledby="allTimeTitle">
+          <div class="section-title"><div><p class="eyebrow">ALL TIME</p><h2 id="allTimeTitle">累计汇总</h2></div></div>
+          <div class="summary-grid month-grid">
+            <div><span>累计领取鸡蛋</span><strong id="totalEggs">0</strong></div>
+            <div><span>累计成功 / 尝试</span><strong id="totalCounts">0 / 0</strong></div>
+          </div>
+        </section>
+        <section class="stats-section" aria-labelledby="monthTitle">
+          <div class="section-title"><div><p class="eyebrow">THIS MONTH</p><h2 id="monthTitle">本月领取统计</h2></div><span id="monthLabel" class="month-label"></span></div>
+          <div class="summary-grid month-grid">
+            <div><span>本月鸡蛋</span><strong id="monthEggs">0</strong></div>
+            <div><span>本月成功 / 尝试</span><strong id="monthCounts">0 / 0</strong></div>
+            <div><span>成功率</span><strong id="monthRate">—</strong></div>
+            <div><span>每次平均</span><strong id="monthAverage">—</strong></div>
+          </div>
+        </section>
+        <section class="stats-section" aria-labelledby="chartTitle">
+          <div class="section-title"><div><p class="eyebrow">LAST 7 DAYS</p><h2 id="chartTitle">最近 7 天鸡蛋趋势</h2></div><span class="chart-unit">单位：个</span></div>
+          <div id="weekChart" class="week-chart" role="img" aria-label="最近七天领取鸡蛋数量折线图"></div>
+        </section>
+      </section>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
