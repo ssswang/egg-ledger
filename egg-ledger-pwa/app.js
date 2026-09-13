@@ -47,6 +47,18 @@ function zonedDateTimeToTimestamp(value) {
 
 function timezoneName() { return $('timezoneSelect').selectedOptions[0]?.text || timezone; }
 function save() { const data=JSON.stringify(records); localStorage.setItem(KEY, data); nativeStore?.saveRecords(data); }
+function refreshData() {
+  try {
+    const raw = nativeStore ? nativeStore.loadRecords() : localStorage.getItem(KEY);
+    const refreshed = JSON.parse(raw || '[]');
+    if (!Array.isArray(refreshed)) throw new Error('invalid records');
+    records = refreshed;
+    const refreshedTimezone = nativeStore?.getTimezone() || localStorage.getItem(ZONE_KEY);
+    if (refreshedTimezone) { timezone = refreshedTimezone; $('timezoneSelect').value = timezone; }
+    render();
+    flash('数据已刷新');
+  } catch { flash('刷新失败，请稍后重试'); }
+}
 function saveTimezone() { localStorage.setItem(ZONE_KEY, timezone); nativeStore?.setTimezone(timezone); }
 function flash(message) { const t=$('toast'); t.textContent=message; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2300); }
 function updateClock() { $('liveTimestamp').textContent = fullFormatter().format(new Date()); }
@@ -72,6 +84,15 @@ function renderMonthAndChart(now) {
   $('monthEggs').textContent=formatEggs(eggs); $('monthCounts').textContent=`${successes.length} / ${monthly.length}`;
   $('monthRate').textContent=monthly.length ? `${Math.round(successes.length/monthly.length*100)}%` : '—';
   $('monthAverage').textContent=successes.length ? (eggs/successes.length).toFixed(2).replace(/\.00$/,'') : '—';
+  const [currentYear, currentMonthNumber] = currentMonth.split('-').map(Number);
+  const months = Array.from({length:6}, (_, index) => {
+    const monthDate = new Date(Date.UTC(currentYear, currentMonthNumber - 1 - index, 1));
+    const key = monthDate.toISOString().slice(0,7);
+    const monthRecords = records.filter(r => dateKey(r.createdAt).slice(0,7) === key);
+    const monthSuccesses = monthRecords.filter(isSuccess);
+    return { key, eggs:sumEggs(monthRecords), success:monthSuccesses.length, attempts:monthRecords.length };
+  });
+  $('monthlyStats').innerHTML = months.map(month => `<div class="monthly-stat"><strong>${month.key.replace('-', ' 年 ')} 月</strong><span>🥚 ${formatEggs(month.eggs)} 个</span><small>成功 / 尝试 ${month.success} / ${month.attempts}</small></div>`).join('');
   const days = Array.from({length:7}, (_, index) => {
     const date = new Date(now - (6-index)*86400000); return { key:dateKey(date), label:dateKey(date).slice(5), eggs:0 };
   });
@@ -103,7 +124,8 @@ function render() {
 
 function renderHistory() {
   const date = $('dateFilter').value; const status = $('statusFilter').value;
-  const filtered = [...records].sort((a,b)=>b.createdAt-a.createdAt).filter(r => (!date || dateKey(r.createdAt)===date) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r)));
+  const minimumTime = Date.now() - 24 * 60 * 60 * 1000;
+  const filtered = [...records].sort((a,b)=>b.createdAt-a.createdAt).filter(r => (date ? dateKey(r.createdAt)===date : r.createdAt >= minimumTime) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r)));
   const list = $('historyList');
   list.classList.toggle('success-grid', historyView === 'success' && filtered.length > 0);
   if (!filtered.length) { list.innerHTML='<div class="empty">还没有符合条件的记录</div>'; return; }
@@ -183,6 +205,31 @@ function importCsv(text) {
 window.receiveNativeCsv = importCsv;
 $('importButton').addEventListener('click',()=>{ if (nativeStore) { nativeStore.importCsv(); return; } $('importFileInput').click(); });
 $('importFileInput').addEventListener('change',(event)=>{ const file=event.target.files[0]; if (!file) return; const reader=new FileReader(); reader.onload=()=>importCsv(reader.result); reader.readAsText(file); event.target.value=''; });
+let pullStartY = 0; let pullDistance = 0; let pulling = false;
+const pullRefresh = $('pullRefresh'); const pullRefreshText = $('pullRefreshText');
+function updatePullRefresh() {
+  const ready = pullDistance >= 76;
+  pullRefresh.classList.toggle('visible', pulling && pullDistance > 8);
+  pullRefresh.classList.toggle('ready', ready);
+  pullRefreshText.textContent = ready ? '松开刷新数据' : '下拉刷新数据';
+}
+document.addEventListener('touchstart', event => {
+  if (window.scrollY > 0 || event.touches.length !== 1 || document.querySelector('dialog[open]')) return;
+  pullStartY = event.touches[0].clientY; pullDistance = 0; pulling = true;
+}, { passive:true });
+document.addEventListener('touchmove', event => {
+  if (!pulling) return;
+  pullDistance = Math.max(0, event.touches[0].clientY - pullStartY);
+  if (pullDistance > 0) updatePullRefresh();
+}, { passive:true });
+document.addEventListener('touchend', () => {
+  if (!pulling) return;
+  const shouldRefresh = pullDistance >= 76;
+  pulling = false; pullRefresh.classList.remove('ready');
+  if (!shouldRefresh) { pullRefresh.classList.remove('visible'); return; }
+  pullRefresh.classList.add('visible','loading'); pullRefreshText.textContent='正在刷新…';
+  requestAnimationFrame(() => { refreshData(); setTimeout(() => pullRefresh.classList.remove('visible','loading'), 450); });
+}, { passive:true });
 $('timezoneSelect').value=timezone; render(); setInterval(()=>{ updateClock(); renderLastRecord(); renderMonthAndChart(Date.now()); },60000);
 if (needsInitialTimezone) $('settingsDialog').showModal();
 if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker.js'));

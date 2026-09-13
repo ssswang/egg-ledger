@@ -12,6 +12,7 @@
     <title>鸡蛋账本</title>
   </head>
   <body>
+    <div id="pullRefresh" class="pull-refresh" aria-live="polite"><span>↓</span><span id="pullRefreshText">下拉刷新数据</span></div>
     <main class="shell">
       <header class="topbar">
         <div>
@@ -84,7 +85,7 @@
           <button id="clearFilterButton" class="text-button" type="button">清除筛选</button>
         </div>
         <div class="history-view-switch" role="group" aria-label="历史视图模式">
-          <button type="button" class="view-button active" data-history-view="list">全部记录</button>
+          <button type="button" class="view-button active" data-history-view="list">最近 24 小时</button>
           <button type="button" class="view-button" data-history-view="success">成功视图</button>
         </div>
         <div id="historyList" class="history-list"></div>
@@ -138,6 +139,10 @@
             <div><span>成功率</span><strong id="monthRate">—</strong></div>
             <div><span>每次平均</span><strong id="monthAverage">—</strong></div>
           </div>
+        </section>
+        <section class="stats-section" aria-labelledby="monthlyHistoryTitle">
+          <div class="section-title"><div><p class="eyebrow">BY MONTH</p><h2 id="monthlyHistoryTitle">按月统计</h2></div><span class="chart-unit">最近 6 个月</span></div>
+          <div id="monthlyStats" class="monthly-stats" aria-label="最近六个月领取统计"></div>
         </section>
         <section class="stats-section" aria-labelledby="chartTitle">
           <div class="section-title"><div><p class="eyebrow">LAST 7 DAYS</p><h2 id="chartTitle">最近 7 天鸡蛋趋势</h2></div><span class="chart-unit">单位：个</span></div>
