@@ -12,6 +12,7 @@ import android.database.sqlite.SQLiteOpenHelper;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -36,6 +37,10 @@ public class MainActivity extends Activity {
     super.onCreate(savedInstanceState);
     database = new EggLedgerDatabase();
     webView = new WebView(this);
+    webView.setOnApplyWindowInsetsListener((view, insets) -> {
+      view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+      return insets;
+    });
     WebSettings settings = webView.getSettings();
     settings.setJavaScriptEnabled(true);
     settings.setDomStorageEnabled(true);
@@ -44,6 +49,7 @@ public class MainActivity extends Activity {
     webView.addJavascriptInterface(new EggLedgerBridge(), "EggLedgerNative");
     webView.loadUrl("file:///android_asset/index.html");
     setContentView(webView);
+    webView.requestApplyInsets();
   }
 
   @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {

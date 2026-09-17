@@ -19,7 +19,6 @@
           <p class="eyebrow">EGG LEDGER</p>
           <h1>🍳 鸡蛋账本</h1>
         </div>
-        <button id="settingsButton" class="icon-button" aria-label="设置">⚙</button>
       </header>
 
       <section class="today-heading">
@@ -93,23 +92,6 @@
       </section>
     </main>
 
-    <dialog id="settingsDialog">
-      <form method="dialog" id="settingsForm">
-        <div class="dialog-title"><h2>记录时区</h2><button id="closeSettingsButton" type="button" class="icon-button" aria-label="关闭">×</button></div>
-        <p>日期与“今天”的计算按此时区进行。首次使用默认北京时间。</p>
-        <label for="timezoneSelect">时区</label>
-        <select id="timezoneSelect">
-          <option value="Asia/Shanghai">北京时间（UTC+8）</option>
-          <option value="Asia/Tokyo">日本标准时间（UTC+9）</option>
-          <option value="Asia/Singapore">新加坡时间（UTC+8）</option>
-          <option value="America/New_York">美国东部时间</option>
-          <option value="America/Los_Angeles">美国太平洋时间</option>
-          <option value="Europe/London">英国时间</option>
-          <option value="UTC">协调世界时（UTC）</option>
-        </select>
-        <button id="saveSettingsButton" value="default" class="wide-button">保存时区</button>
-      </form>
-    </dialog>
     <dialog id="editDialog">
       <form method="dialog" id="editForm">
         <div class="dialog-title"><h2>修改领取记录</h2><button id="closeEditButton" type="button" class="icon-button" aria-label="关闭">×</button></div>
@@ -117,7 +99,7 @@
         <input id="editEggInput" inputmode="decimal" autocomplete="off" type="text" maxlength="12" />
         <label for="editTimeInput">领取时间</label>
         <input id="editTimeInput" type="datetime-local" step="1" />
-        <p class="hint">填写 -1 代表消费 1 个鸡蛋；0 为攒攒手气；正数（可带小数）代表领取成功。时间按当前选择的记录时区理解。</p>
+        <p class="hint">填写 -1 代表消费 1 个鸡蛋；0 为攒攒手气；正数（可带小数）代表领取成功。时间按北京时间理解。</p>
         <button value="default" class="wide-button">保存修改</button>
       </form>
     </dialog>

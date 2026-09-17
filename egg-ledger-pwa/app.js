@@ -1,13 +1,10 @@
 const KEY = 'egg-ledger-records-v1';
-const ZONE_KEY = 'egg-ledger-timezone-v1';
 const nativeStore = window.EggLedgerNative;
 const browserRecords = JSON.parse(localStorage.getItem(KEY) || '[]');
 const storedNativeRecords = nativeStore ? JSON.parse(nativeStore.loadRecords() || '[]') : [];
 let records = storedNativeRecords.length ? storedNativeRecords : browserRecords;
 if (nativeStore && !storedNativeRecords.length && browserRecords.length) nativeStore.saveRecords(JSON.stringify(records));
-const storedTimezone = nativeStore?.getTimezone() || localStorage.getItem(ZONE_KEY);
-const needsInitialTimezone = !storedTimezone;
-let timezone = storedTimezone || 'Asia/Shanghai';
+const timezone = 'Asia/Shanghai';
 let editingId = null;
 let historyView = 'list';
 
@@ -21,6 +18,7 @@ const isSuccess = (r) => r.eggs > 0;
 const failureLabel = (r) => r.eggs === -1 ? '消费 1 个鸡蛋' : '攒攒手气';
 const sumEggs = (rs) => rs.filter(isSuccess).reduce((n,r) => n + r.eggs, 0);
 const formatEggs = (value) => String(Number(Number(value).toFixed(6)));
+const formatAverage = (value) => Number(value).toFixed(2);
 const sanitizeEggInput = (value) => {
   const cleaned=value.replace(/[^0-9.-]/g,''); const negative=cleaned.startsWith('-') ? '-' : '';
   const unsigned=cleaned.replaceAll('-',''); const [whole='', ...fractions]=unsigned.split('.');
@@ -45,7 +43,7 @@ function zonedDateTimeToTimestamp(value) {
   return guess;
 }
 
-function timezoneName() { return $('timezoneSelect').selectedOptions[0]?.text || timezone; }
+function timezoneName() { return '北京时间（UTC+8）'; }
 function save() { const data=JSON.stringify(records); localStorage.setItem(KEY, data); nativeStore?.saveRecords(data); }
 function refreshData() {
   try {
@@ -53,13 +51,10 @@ function refreshData() {
     const refreshed = JSON.parse(raw || '[]');
     if (!Array.isArray(refreshed)) throw new Error('invalid records');
     records = refreshed;
-    const refreshedTimezone = nativeStore?.getTimezone() || localStorage.getItem(ZONE_KEY);
-    if (refreshedTimezone) { timezone = refreshedTimezone; $('timezoneSelect').value = timezone; }
     render();
     flash('数据已刷新');
   } catch { flash('刷新失败，请稍后重试'); }
 }
-function saveTimezone() { localStorage.setItem(ZONE_KEY, timezone); nativeStore?.setTimezone(timezone); }
 function flash(message) { const t=$('toast'); t.textContent=message; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2300); }
 function updateClock() { $('liveTimestamp').textContent = fullFormatter().format(new Date()); }
 function elapsedText(time) {
@@ -83,7 +78,7 @@ function renderMonthAndChart(now) {
   $('monthLabel').textContent = currentMonth.replace('-', ' 年 ') + ' 月';
   $('monthEggs').textContent=formatEggs(eggs); $('monthCounts').textContent=`${successes.length} / ${monthly.length}`;
   $('monthRate').textContent=monthly.length ? `${Math.round(successes.length/monthly.length*100)}%` : '—';
-  $('monthAverage').textContent=successes.length ? (eggs/successes.length).toFixed(2).replace(/\.00$/,'') : '—';
+  $('monthAverage').textContent=successes.length ? formatAverage(eggs/successes.length) : '—';
   const [currentYear, currentMonthNumber] = currentMonth.split('-').map(Number);
   const months = Array.from({length:6}, (_, index) => {
     const monthDate = new Date(Date.UTC(currentYear, currentMonthNumber - 1 - index, 1));
@@ -109,7 +104,7 @@ function renderMonthAndChart(now) {
 
 function render() {
   const now = Date.now(); const today = dateKey(now); const daily = records.filter(r => dateKey(r.createdAt) === today);
-  const recent = records.filter(r => r.createdAt >= now - 24*60*60*1000);
+  const recent = records.filter(r => r.createdAt >= now - 24*60*60*1000 && r.createdAt <= now);
   const count = (rs) => rs.filter(isSuccess).length;
   $('todayLabel').textContent = `${dayFormatter().format(new Date())} · 今天`;
   $('timezoneLabel').textContent = timezoneName();
@@ -117,15 +112,15 @@ function render() {
   $('hoursCounts').textContent=`${count(recent)} / ${recent.length}`;
   const best = [...records].filter(isSuccess).sort((a,b) => b.eggs-a.eggs || b.createdAt-a.createdAt)[0];
   $('singleBest').textContent=best ? formatEggs(best.eggs) : 0; $('singleBestTime').textContent=best ? fullFormatter().format(new Date(best.createdAt)) : '暂无成功记录';
-  $('todayEggs').textContent=formatEggs(sumEggs(daily)); $('todayAverage').textContent=count(daily) ? formatEggs(sumEggs(daily)/count(daily)) : '—';
+  $('todayEggs').textContent=formatEggs(sumEggs(daily)); $('todayAverage').textContent=count(daily) ? formatAverage(sumEggs(daily)/count(daily)) : '—';
   $('totalEggs').textContent=formatEggs(sumEggs(records)); $('totalCounts').textContent=`${count(records)} / ${records.length}`;
   renderHistory(); renderLastRecord(); renderMonthAndChart(now); updateClock();
 }
 
 function renderHistory() {
   const date = $('dateFilter').value; const status = $('statusFilter').value;
-  const minimumTime = Date.now() - 24 * 60 * 60 * 1000;
-  const filtered = [...records].sort((a,b)=>b.createdAt-a.createdAt).filter(r => (date ? dateKey(r.createdAt)===date : r.createdAt >= minimumTime) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r)));
+  const now = Date.now(); const minimumTime = now - 24 * 60 * 60 * 1000;
+  const filtered = [...records].sort((a,b)=>b.createdAt-a.createdAt).filter(r => (date ? dateKey(r.createdAt)===date : r.createdAt >= minimumTime && r.createdAt <= now) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r)));
   const list = $('historyList');
   list.classList.toggle('success-grid', historyView === 'success' && filtered.length > 0);
   if (!filtered.length) { list.innerHTML='<div class="empty">还没有符合条件的记录</div>'; return; }
@@ -152,9 +147,6 @@ document.querySelectorAll('[data-history-view]').forEach(button => button.addEve
 }));
 $('moreStatsButton').addEventListener('click',()=>{ renderMonthAndChart(Date.now()); $('statsDialog').showModal(); });
 $('closeStatsButton').addEventListener('click',()=> $('statsDialog').close());
-$('settingsButton').addEventListener('click',()=> $('settingsDialog').showModal());
-$('closeSettingsButton').addEventListener('click',()=> $('settingsDialog').close());
-$('settingsForm').addEventListener('submit',(e)=>{ e.preventDefault(); timezone=$('timezoneSelect').value; saveTimezone(); $('settingsDialog').close(); render(); flash('时区已保存'); });
 $('historyList').addEventListener('click', (event) => {
   const button = event.target.closest('[data-edit-id]'); if (!button) return;
   const record = records.find(r => r.id === button.dataset.editId); if (!record) return;
@@ -205,8 +197,13 @@ function importCsv(text) {
 window.receiveNativeCsv = importCsv;
 $('importButton').addEventListener('click',()=>{ if (nativeStore) { nativeStore.importCsv(); return; } $('importFileInput').click(); });
 $('importFileInput').addEventListener('change',(event)=>{ const file=event.target.files[0]; if (!file) return; const reader=new FileReader(); reader.onload=()=>importCsv(reader.result); reader.readAsText(file); event.target.value=''; });
-let pullStartY = 0; let pullDistance = 0; let pulling = false;
+let pullStartY = 0; let pullDistance = 0; let pulling = false; let pullRefreshTimer;
 const pullRefresh = $('pullRefresh'); const pullRefreshText = $('pullRefreshText');
+function resetPullRefresh() {
+  clearTimeout(pullRefreshTimer);
+  pullRefresh.classList.remove('visible','ready','loading');
+  pullRefreshText.textContent = '下拉刷新数据';
+}
 function updatePullRefresh() {
   const ready = pullDistance >= 76;
   pullRefresh.classList.toggle('visible', pulling && pullDistance > 8);
@@ -226,10 +223,11 @@ document.addEventListener('touchend', () => {
   if (!pulling) return;
   const shouldRefresh = pullDistance >= 76;
   pulling = false; pullRefresh.classList.remove('ready');
-  if (!shouldRefresh) { pullRefresh.classList.remove('visible'); return; }
+  if (!shouldRefresh) { resetPullRefresh(); return; }
   pullRefresh.classList.add('visible','loading'); pullRefreshText.textContent='正在刷新…';
-  requestAnimationFrame(() => { refreshData(); setTimeout(() => pullRefresh.classList.remove('visible','loading'), 450); });
+  refreshData();
+  pullRefreshTimer = setTimeout(resetPullRefresh, 650);
 }, { passive:true });
-$('timezoneSelect').value=timezone; render(); setInterval(()=>{ updateClock(); renderLastRecord(); renderMonthAndChart(Date.now()); },60000);
-if (needsInitialTimezone) $('settingsDialog').showModal();
+document.addEventListener('touchcancel', resetPullRefresh, { passive:true });
+render(); setInterval(render,60000);
 if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker.js'));
