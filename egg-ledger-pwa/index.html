@@ -37,10 +37,10 @@
         <form id="recordForm">
           <label for="eggInput">本次鸡蛋数量</label>
           <div class="input-row">
-            <input id="eggInput" inputmode="decimal" autocomplete="off" type="text" placeholder="例如 1.3，失败填 -1" maxlength="12" />
+            <input id="eggInput" inputmode="decimal" autocomplete="off" type="text" placeholder="例如 1.3" maxlength="12" />
             <button type="submit">提交</button>
           </div>
-          <p class="hint">可输入非负数或小数。-1 会记为消费 1 个鸡蛋；0 为攒攒手气；正数为领取成功。</p>
+          <p class="hint">可输入 0 或正数，也支持小数；0 为攒攒手气，正数为领取成功。</p>
         </form>
       </section>
 
@@ -99,7 +99,7 @@
         <input id="editEggInput" inputmode="decimal" autocomplete="off" type="text" maxlength="12" />
         <label for="editTimeInput">领取时间</label>
         <input id="editTimeInput" type="datetime-local" step="1" />
-        <p class="hint">填写 -1 代表消费 1 个鸡蛋；0 为攒攒手气；正数（可带小数）代表领取成功。时间按北京时间理解。</p>
+        <p class="hint">0 为攒攒手气；正数（可带小数）代表领取成功。时间按北京时间理解。</p>
         <button value="default" class="wide-button">保存修改</button>
       </form>
     </dialog>

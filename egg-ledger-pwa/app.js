@@ -119,6 +119,7 @@ function render() {
 
 function renderHistory() {
   const date = $('dateFilter').value; const status = $('statusFilter').value;
+  document.querySelector('[data-history-view="list"]').textContent = date ? '该日记录' : '最近 24 小时';
   const now = Date.now(); const minimumTime = now - 24 * 60 * 60 * 1000;
   const filtered = [...records].sort((a,b)=>b.createdAt-a.createdAt).filter(r => (date ? dateKey(r.createdAt)===date : r.createdAt >= minimumTime && r.createdAt <= now) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r)));
   const list = $('historyList');
