@@ -98,6 +98,8 @@ public class MainActivity extends Activity {
     private final SharedPreferences preferences = getSharedPreferences("egg_ledger_settings", MODE_PRIVATE);
     @JavascriptInterface public String loadRecords() { return database.readRecords(); }
     @JavascriptInterface public void saveRecords(String json) { database.replaceRecords(json); }
+    @JavascriptInterface public void addRecord(String json) { database.addRecord(json); }
+    @JavascriptInterface public void updateRecord(String json) { database.updateRecord(json); }
     @JavascriptInterface public String getTimezone() { return preferences.getString("timezone", ""); }
     @JavascriptInterface public void setTimezone(String timezone) { preferences.edit().putString("timezone", timezone).apply(); }
     @JavascriptInterface public void exportCsv(String csv) {
@@ -148,6 +150,25 @@ public class MainActivity extends Activity {
           }
           db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
+      } catch (JSONException ignored) { }
+    }
+    synchronized void addRecord(String json) {
+      try {
+        JSONObject record = new JSONObject(json);
+        ContentValues row = new ContentValues();
+        row.put("id", record.getString("id"));
+        row.put("eggs", record.getDouble("eggs"));
+        row.put("created_at", record.getLong("createdAt"));
+        getWritableDatabase().insertOrThrow("records", null, row);
+      } catch (JSONException ignored) { }
+    }
+    synchronized void updateRecord(String json) {
+      try {
+        JSONObject record = new JSONObject(json);
+        ContentValues row = new ContentValues();
+        row.put("eggs", record.getDouble("eggs"));
+        row.put("created_at", record.getLong("createdAt"));
+        getWritableDatabase().update("records", row, "id = ?", new String[]{record.getString("id")});
       } catch (JSONException ignored) { }
     }
   }

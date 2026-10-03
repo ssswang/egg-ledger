@@ -7,13 +7,18 @@ if (nativeStore && !storedNativeRecords.length && browserRecords.length) nativeS
 const timezone = 'Asia/Shanghai';
 let editingId = null;
 let historyView = 'list';
+let lastSummary = null;
+let lastRenderedDate = '';
 
 const $ = (id) => document.getElementById(id);
-const dayFormatter = () => new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year:'numeric', month:'2-digit', day:'2-digit' });
-const displayFormatter = () => new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
-const fullFormatter = () => new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
-const timeFormatter = () => new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour:'2-digit', minute:'2-digit', hour12:false });
-const dateKey = (time) => dayFormatter().format(new Date(time)).replaceAll('/','-');
+const dayFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year:'numeric', month:'2-digit', day:'2-digit' });
+const fullFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+const timeFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour:'2-digit', minute:'2-digit', hour12:false });
+const dayKeyCache = new Map();
+const dateKey = (time) => {
+  if (!dayKeyCache.has(time)) dayKeyCache.set(time, dayFormatter.format(new Date(time)).replaceAll('/','-'));
+  return dayKeyCache.get(time);
+};
 const isSuccess = (r) => r.eggs > 0;
 const failureLabel = (r) => r.eggs === -1 ? '消费 1 个鸡蛋' : '攒攒手气';
 const sumEggs = (rs) => rs.filter(isSuccess).reduce((n,r) => n + r.eggs, 0);
@@ -44,19 +49,20 @@ function zonedDateTimeToTimestamp(value) {
 }
 
 function timezoneName() { return '北京时间（UTC+8）'; }
-function save() { const data=JSON.stringify(records); localStorage.setItem(KEY, data); nativeStore?.saveRecords(data); }
+function sortRecords() { records.sort((a,b) => b.createdAt - a.createdAt); }
+function save() { if (!nativeStore) localStorage.setItem(KEY, JSON.stringify(records)); }
 function refreshData() {
   try {
     const raw = nativeStore ? nativeStore.loadRecords() : localStorage.getItem(KEY);
     const refreshed = JSON.parse(raw || '[]');
     if (!Array.isArray(refreshed)) throw new Error('invalid records');
-    records = refreshed;
+    records = refreshed; sortRecords();
     render();
     flash('数据已刷新');
   } catch { flash('刷新失败，请稍后重试'); }
 }
 function flash(message) { const t=$('toast'); t.textContent=message; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2300); }
-function updateClock() { $('liveTimestamp').textContent = fullFormatter().format(new Date()); }
+function updateClock() { $('liveTimestamp').textContent = fullFormatter.format(new Date()); }
 function elapsedText(time) {
   const difference = Math.floor((Date.now() - time) / 1000);
   if (difference < -60) return `${Math.ceil(-difference / 60)} 分钟后`;
@@ -66,32 +72,29 @@ function elapsedText(time) {
   const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours} 小时前`;
   const days = Math.floor(hours / 24); return `${days} 天前`;
 }
-function renderLastRecord() {
-  const last = records.filter(isSuccess).sort((a,b) => b.createdAt - a.createdAt)[0];
+function renderLastRecord(last) {
   if (!last) { $('lastRecordTitle').textContent='还没有成功领取记录'; $('lastRecordTime').textContent='提交成功记录后会显示在这里'; $('lastRecordAge').textContent='—'; return; }
-  $('lastRecordTitle').textContent=`上次领取 ${formatEggs(last.eggs)} 个鸡蛋`; $('lastRecordTime').textContent=fullFormatter().format(new Date(last.createdAt)); $('lastRecordAge').textContent=elapsedText(last.createdAt);
+  $('lastRecordTitle').textContent=`上次领取 ${formatEggs(last.eggs)} 个鸡蛋`; $('lastRecordTime').textContent=fullFormatter.format(new Date(last.createdAt)); $('lastRecordAge').textContent=elapsedText(last.createdAt);
 }
-function renderMonthAndChart(now) {
+function renderMonthAndChart(now, summary) {
   const currentMonth = dateKey(now).slice(0,7);
-  const monthly = records.filter(r => dateKey(r.createdAt).slice(0,7) === currentMonth);
-  const successes = monthly.filter(isSuccess); const eggs = sumEggs(monthly);
+  const monthly = summary.months.get(currentMonth) || { eggs:0, success:0, attempts:0 };
+  const eggs = monthly.eggs;
   $('monthLabel').textContent = currentMonth.replace('-', ' 年 ') + ' 月';
-  $('monthEggs').textContent=formatEggs(eggs); $('monthCounts').textContent=`${successes.length} / ${monthly.length}`;
-  $('monthRate').textContent=monthly.length ? `${Math.round(successes.length/monthly.length*100)}%` : '—';
-  $('monthAverage').textContent=successes.length ? formatAverage(eggs/successes.length) : '—';
+  $('monthEggs').textContent=formatEggs(eggs); $('monthCounts').textContent=`${monthly.success} / ${monthly.attempts}`;
+  $('monthRate').textContent=monthly.attempts ? `${Math.round(monthly.success/monthly.attempts*100)}%` : '—';
+  $('monthAverage').textContent=monthly.success ? formatAverage(eggs/monthly.success) : '—';
   const [currentYear, currentMonthNumber] = currentMonth.split('-').map(Number);
   const months = Array.from({length:6}, (_, index) => {
     const monthDate = new Date(Date.UTC(currentYear, currentMonthNumber - 1 - index, 1));
     const key = monthDate.toISOString().slice(0,7);
-    const monthRecords = records.filter(r => dateKey(r.createdAt).slice(0,7) === key);
-    const monthSuccesses = monthRecords.filter(isSuccess);
-    return { key, eggs:sumEggs(monthRecords), success:monthSuccesses.length, attempts:monthRecords.length };
+    return { key, ...(summary.months.get(key) || { eggs:0, success:0, attempts:0 }) };
   });
   $('monthlyStats').innerHTML = months.map(month => `<div class="monthly-stat"><strong>${month.key.replace('-', ' 年 ')} 月</strong><span>🥚 ${formatEggs(month.eggs)} 个</span><small>成功 / 尝试 ${month.success} / ${month.attempts}</small></div>`).join('');
   const days = Array.from({length:7}, (_, index) => {
     const date = new Date(now - (6-index)*86400000); return { key:dateKey(date), label:dateKey(date).slice(5), eggs:0 };
   });
-  days.forEach(day => { day.eggs = sumEggs(records.filter(r => dateKey(r.createdAt) === day.key)); });
+  days.forEach(day => { day.eggs = summary.days.get(day.key) || 0; });
   const width=700, left=42, right=678, top=22, bottom=160, max=Math.max(1,...days.map(d=>d.eggs));
   const x=(i)=>left+(right-left)*i/(days.length-1); const y=(value)=>bottom-(bottom-top)*value/max;
   const pointString=days.map((day,i)=>`${x(i).toFixed(1)},${y(day.eggs).toFixed(1)}`).join(' ');
@@ -103,40 +106,84 @@ function renderMonthAndChart(now) {
 }
 
 function render() {
-  const now = Date.now(); const today = dateKey(now); const daily = records.filter(r => dateKey(r.createdAt) === today);
-  const recent = records.filter(r => r.createdAt >= now - 24*60*60*1000 && r.createdAt <= now);
-  const count = (rs) => rs.filter(isSuccess).length;
-  $('todayLabel').textContent = `${dayFormatter().format(new Date())} · 今天`;
+  const now = Date.now(); const today = dateKey(now); const minimumTime = now - 24*60*60*1000;
+  lastRenderedDate = today;
+  const summary = { dailyEggs:0, dailySuccess:0, dailyAttempts:0, recentSuccess:0, recentAttempts:0, totalEggs:0, totalSuccess:0, best:null, lastSuccess:null, months:new Map(), days:new Map() };
+  const todayMonth = today.slice(0,7);
+  const [currentYear, currentMonthNumber] = todayMonth.split('-').map(Number);
+  const monthKeys = new Set(Array.from({length:6}, (_, index) => new Date(Date.UTC(currentYear, currentMonthNumber - 1 - index, 1)).toISOString().slice(0,7)));
+  for (const record of records) {
+    const success = isSuccess(record); const key = dateKey(record.createdAt); const monthKey = key.slice(0,7);
+    if (success) {
+      summary.totalEggs += record.eggs; summary.totalSuccess++;
+      if (!summary.best || record.eggs > summary.best.eggs || (record.eggs === summary.best.eggs && record.createdAt > summary.best.createdAt)) summary.best = record;
+      if (!summary.lastSuccess || record.createdAt > summary.lastSuccess.createdAt) summary.lastSuccess = record;
+      if (key === today) { summary.dailyEggs += record.eggs; summary.dailySuccess++; }
+      if (monthKeys.has(monthKey)) {
+        const month = summary.months.get(monthKey) || { eggs:0, success:0, attempts:0 };
+        month.eggs += record.eggs; month.success++; month.attempts++; summary.months.set(monthKey, month);
+      }
+      const day = summary.days.get(key) || 0; summary.days.set(key, day + record.eggs);
+    }
+    if (key === today) summary.dailyAttempts++;
+    if (record.createdAt >= minimumTime && record.createdAt <= now) summary.recentAttempts++;
+    if (record.createdAt >= minimumTime && record.createdAt <= now && success) summary.recentSuccess++;
+    if (monthKeys.has(monthKey) && !success) {
+      const month = summary.months.get(monthKey) || { eggs:0, success:0, attempts:0 };
+      month.attempts++; summary.months.set(monthKey, month);
+    }
+  }
+  lastSummary = summary;
+  $('todayLabel').textContent = `${dayFormatter.format(new Date())} · 今天`;
   $('timezoneLabel').textContent = timezoneName();
-  $('todayCounts').textContent=`${count(daily)} / ${daily.length}`;
-  $('hoursCounts').textContent=`${count(recent)} / ${recent.length}`;
-  const best = [...records].filter(isSuccess).sort((a,b) => b.eggs-a.eggs || b.createdAt-a.createdAt)[0];
-  $('singleBest').textContent=best ? formatEggs(best.eggs) : 0; $('singleBestTime').textContent=best ? fullFormatter().format(new Date(best.createdAt)) : '暂无成功记录';
-  $('todayEggs').textContent=formatEggs(sumEggs(daily)); $('todayAverage').textContent=count(daily) ? formatAverage(sumEggs(daily)/count(daily)) : '—';
-  $('totalEggs').textContent=formatEggs(sumEggs(records)); $('totalCounts').textContent=`${count(records)} / ${records.length}`;
-  renderHistory(); renderLastRecord(); renderMonthAndChart(now); updateClock();
+  $('todayCounts').textContent=`${summary.dailySuccess} / ${summary.dailyAttempts}`;
+  $('hoursCounts').textContent=`${summary.recentSuccess} / ${summary.recentAttempts}`;
+  const best = summary.best;
+  $('singleBest').textContent=best ? formatEggs(best.eggs) : 0; $('singleBestTime').textContent=best ? fullFormatter.format(new Date(best.createdAt)) : '暂无成功记录';
+  $('todayEggs').textContent=formatEggs(summary.dailyEggs); $('todayAverage').textContent=summary.dailySuccess ? formatAverage(summary.dailyEggs/summary.dailySuccess) : '—';
+  $('totalEggs').textContent=formatEggs(summary.totalEggs); $('totalCounts').textContent=`${summary.totalSuccess} / ${records.length}`;
+  renderHistory(); renderLastRecord(summary.lastSuccess); renderMonthAndChart(now, summary); updateClock();
+}
+
+function updateRollingStats() {
+  const now = Date.now(); const minimumTime = now - 24*60*60*1000;
+  let attempts = 0; let successes = 0;
+  for (const record of records) {
+    if (record.createdAt < minimumTime) break;
+    if (record.createdAt > now) continue;
+    attempts++;
+    if (isSuccess(record)) successes++;
+  }
+  $('hoursCounts').textContent = `${successes} / ${attempts}`;
 }
 
 function renderHistory() {
   const date = $('dateFilter').value; const status = $('statusFilter').value;
   document.querySelector('[data-history-view="list"]').textContent = date ? '该日记录' : '最近 24 小时';
   const now = Date.now(); const minimumTime = now - 24 * 60 * 60 * 1000;
-  const filtered = [...records].sort((a,b)=>b.createdAt-a.createdAt).filter(r => (date ? dateKey(r.createdAt)===date : r.createdAt >= minimumTime && r.createdAt <= now) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r)));
+  const filtered = [];
+  for (const r of records) {
+    if (!date && r.createdAt < minimumTime) break;
+    if ((date ? dateKey(r.createdAt)===date : r.createdAt <= now) && (status==='all'||(status==='success')===isSuccess(r)) && (historyView !== 'success' || isSuccess(r))) filtered.push(r);
+  }
   const list = $('historyList');
   list.classList.toggle('success-grid', historyView === 'success' && filtered.length > 0);
   if (!filtered.length) { list.innerHTML='<div class="empty">还没有符合条件的记录</div>'; return; }
   if (historyView === 'success') {
-    list.innerHTML = filtered.map(r => `<article class="reward-history-entry" aria-label="领取 ${formatEggs(r.eggs)} 个鸡蛋，${fullFormatter().format(new Date(r.createdAt))}"><strong class="reward-count">🥚 ${formatEggs(r.eggs)}</strong><p class="reward-date">${timeFormatter().format(new Date(r.createdAt))}</p></article>`).join('');
+    list.innerHTML = filtered.map(r => `<article class="reward-history-entry" aria-label="领取 ${formatEggs(r.eggs)} 个鸡蛋，${fullFormatter.format(new Date(r.createdAt))}"><strong class="reward-count">🥚 ${formatEggs(r.eggs)}</strong><p class="reward-date">${timeFormatter.format(new Date(r.createdAt))}</p></article>`).join('');
     return;
   }
-  list.innerHTML = filtered.map(r => { const title=isSuccess(r) ? `✅ 领取 ${formatEggs(r.eggs)} 个 🍳` : r.eggs === -1 ? '❌ 消费 1 个 🍳' : '❌ 攒攒手气'; return `<article class="entry"><div><p class="entry-title">${title}</p><p class="entry-time">${fullFormatter().format(new Date(r.createdAt))} · 时间戳 ${r.createdAt}</p></div><div class="entry-actions"><button class="edit-button" type="button" data-edit-id="${r.id}">修改</button></div></article>`; }).join('');
+  list.innerHTML = filtered.map(r => { const title=isSuccess(r) ? `✅ 领取 ${formatEggs(r.eggs)} 个 🍳` : r.eggs === -1 ? '❌ 消费 1 个 🍳' : '❌ 攒攒手气'; return `<article class="entry"><div><p class="entry-title">${title}</p><p class="entry-time">${fullFormatter.format(new Date(r.createdAt))} · 时间戳 ${r.createdAt}</p></div><div class="entry-actions"><button class="edit-button" type="button" data-edit-id="${r.id}">修改</button></div></article>`; }).join('');
 }
 
 $('recordForm').addEventListener('submit', (event) => {
   event.preventDefault(); const raw=$('eggInput').value.trim();
   if (!/^-?\d+(?:\.\d+)?$/.test(raw)) return flash('请输入数字，例如 1.3 或 -1');
   const eggs=Number(raw); if (!Number.isFinite(eggs) || (eggs < 0 && eggs !== -1)) return flash('数量只能是 -1 或非负数');
-  records.push({ id: crypto.randomUUID?.() || String(Date.now()), eggs, createdAt:Date.now() }); save(); $('eggInput').value=''; render(); flash(eggs === -1 ? '已记录消费 1 个鸡蛋' : eggs === 0 ? '已记录攒攒手气' : '领取已记录');
+  const record = { id: crypto.randomUUID?.() || String(Date.now()), eggs, createdAt:Date.now() };
+  records.push(record); sortRecords();
+  if (nativeStore) nativeStore.addRecord(JSON.stringify(record)); else save();
+  $('eggInput').value=''; render(); flash(eggs === -1 ? '已记录消费 1 个鸡蛋' : eggs === 0 ? '已记录攒攒手气' : '领取已记录');
 });
 $('eggInput').addEventListener('input', e => { e.target.value=sanitizeEggInput(e.target.value); });
 $('dateFilter').addEventListener('change',renderHistory); $('statusFilter').addEventListener('change',renderHistory);
@@ -146,7 +193,7 @@ document.querySelectorAll('[data-history-view]').forEach(button => button.addEve
   if (historyView==='success' && !$('dateFilter').value) $('dateFilter').value=dateKey(Date.now());
   $('statusFilter').value=historyView==='success' ? 'success' : 'all'; $('statusFilter').disabled=historyView==='success'; renderHistory();
 }));
-$('moreStatsButton').addEventListener('click',()=>{ renderMonthAndChart(Date.now()); $('statsDialog').showModal(); });
+$('moreStatsButton').addEventListener('click',()=>{ renderMonthAndChart(Date.now(), lastSummary); $('statsDialog').showModal(); });
 $('closeStatsButton').addEventListener('click',()=> $('statsDialog').close());
 $('historyList').addEventListener('click', (event) => {
   const button = event.target.closest('[data-edit-id]'); if (!button) return;
@@ -161,10 +208,12 @@ $('editForm').addEventListener('submit', (event) => {
   const eggs = Number(raw); if (!Number.isFinite(eggs) || (eggs < 0 && eggs !== -1)) return flash('数量只能是 -1 或非负数');
   const createdAt = zonedDateTimeToTimestamp($('editTimeInput').value); if (!Number.isFinite(createdAt)) return flash('请选择有效的领取时间');
   const record = records.find(r => r.id === editingId); if (!record) return flash('未找到这条记录');
-  record.eggs = eggs; record.createdAt = createdAt; save(); $('editDialog').close(); editingId=null; render(); flash('记录已修改');
+  record.eggs = eggs; record.createdAt = createdAt; sortRecords();
+  if (nativeStore) nativeStore.updateRecord(JSON.stringify(record)); else save();
+  $('editDialog').close(); editingId=null; render(); flash('记录已修改');
 });
 $('exportButton').addEventListener('click',()=>{
-  const rows=[['record_time','unix_timestamp_ms','timezone','egg_count','status'],...records.sort((a,b)=>a.createdAt-b.createdAt).map(r=>[fullFormatter().format(new Date(r.createdAt)),r.createdAt,timezone,r.eggs,isSuccess(r)?'success':r.eggs === -1 ? 'spend_1_egg' : 'try_luck'])];
+  const rows=[['record_time','unix_timestamp_ms','timezone','egg_count','status'],...[...records].sort((a,b)=>a.createdAt-b.createdAt).map(r=>[fullFormatter.format(new Date(r.createdAt)),r.createdAt,timezone,r.eggs,isSuccess(r)?'success':r.eggs === -1 ? 'spend_1_egg' : 'try_luck'])];
   const csv='\uFEFF'+rows.map(row=>row.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\r\n');
   if (nativeStore) { nativeStore.exportCsv(csv); flash('请选择保存 CSV 的位置'); return; }
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`egg-ledger_${dateKey(Date.now())}.csv`; a.click(); URL.revokeObjectURL(a.href); flash('CSV 已导出');
@@ -193,7 +242,10 @@ function importCsv(text) {
     if (!Number.isFinite(createdAt) || !Number.isFinite(eggs) || (eggs < 0 && eggs !== -1) || known.has(key)) return;
     records.push({ id:crypto.randomUUID?.() || `${createdAt}-${eggs}`, eggs, createdAt }); known.add(key); imported++;
   });
-  if (!imported) return flash('没有可导入的新记录'); save(); render(); flash(`已导入 ${imported} 条记录`);
+  if (!imported) return flash('没有可导入的新记录');
+  sortRecords();
+  if (nativeStore) nativeStore.saveRecords(JSON.stringify(records)); else save();
+  render(); flash(`已导入 ${imported} 条记录`);
 }
 window.receiveNativeCsv = importCsv;
 $('importButton').addEventListener('click',()=>{ if (nativeStore) { nativeStore.importCsv(); return; } $('importFileInput').click(); });
@@ -230,5 +282,8 @@ document.addEventListener('touchend', () => {
   pullRefreshTimer = setTimeout(resetPullRefresh, 650);
 }, { passive:true });
 document.addEventListener('touchcancel', resetPullRefresh, { passive:true });
-render(); setInterval(render,60000);
+sortRecords(); render(); setInterval(() => {
+  updateClock(); renderLastRecord(records.find(isSuccess));
+  if (dateKey(Date.now()) !== lastRenderedDate) render(); else updateRollingStats();
+},60000);
 if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker.js'));
