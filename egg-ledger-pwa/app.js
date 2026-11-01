@@ -78,19 +78,18 @@ function renderLastRecord(last) {
 }
 function renderMonthAndChart(now, summary) {
   const currentMonth = dateKey(now).slice(0,7);
-  const monthly = summary.months.get(currentMonth) || { eggs:0, success:0, attempts:0 };
+  const monthly = summary.months.get(currentMonth) || { eggs:0, success:0 };
   const eggs = monthly.eggs;
   $('monthLabel').textContent = currentMonth.replace('-', ' 年 ') + ' 月';
-  $('monthEggs').textContent=formatEggs(eggs); $('monthCounts').textContent=`${monthly.success} / ${monthly.attempts}`;
-  $('monthRate').textContent=monthly.attempts ? `${Math.round(monthly.success/monthly.attempts*100)}%` : '—';
+  $('monthEggs').textContent=formatEggs(eggs); $('monthCounts').textContent=`${monthly.success}`;
   $('monthAverage').textContent=monthly.success ? formatAverage(eggs/monthly.success) : '—';
   const [currentYear, currentMonthNumber] = currentMonth.split('-').map(Number);
   const months = Array.from({length:6}, (_, index) => {
     const monthDate = new Date(Date.UTC(currentYear, currentMonthNumber - 1 - index, 1));
     const key = monthDate.toISOString().slice(0,7);
-    return { key, ...(summary.months.get(key) || { eggs:0, success:0, attempts:0 }) };
+    return { key, ...(summary.months.get(key) || { eggs:0, success:0 }) };
   });
-  $('monthlyStats').innerHTML = months.map(month => `<div class="monthly-stat"><strong>${month.key.replace('-', ' 年 ')} 月</strong><span>🥚 ${formatEggs(month.eggs)} 个</span><small>成功 / 尝试 ${month.success} / ${month.attempts}</small></div>`).join('');
+  $('monthlyStats').innerHTML = months.map(month => `<div class="monthly-stat"><strong>${month.key.replace('-', ' 年 ')} 月</strong><span>🥚 ${formatEggs(month.eggs)} 个</span><small>成功 ${month.success} 次</small></div>`).join('');
   const days = Array.from({length:7}, (_, index) => {
     const date = new Date(now - (6-index)*86400000); return { key:dateKey(date), label:dateKey(date).slice(5), eggs:0 };
   });
@@ -106,9 +105,9 @@ function renderMonthAndChart(now, summary) {
 }
 
 function render() {
-  const now = Date.now(); const today = dateKey(now); const minimumTime = now - 24*60*60*1000;
+  const now = Date.now(); const today = dateKey(now);
   lastRenderedDate = today;
-  const summary = { dailyEggs:0, dailySuccess:0, dailyAttempts:0, recentSuccess:0, recentAttempts:0, totalEggs:0, totalSuccess:0, best:null, lastSuccess:null, months:new Map(), days:new Map() };
+  const summary = { dailyEggs:0, dailySuccess:0, totalEggs:0, totalSuccess:0, best:null, lastSuccess:null, months:new Map(), days:new Map() };
   const todayMonth = today.slice(0,7);
   const [currentYear, currentMonthNumber] = todayMonth.split('-').map(Number);
   const monthKeys = new Set(Array.from({length:6}, (_, index) => new Date(Date.UTC(currentYear, currentMonthNumber - 1 - index, 1)).toISOString().slice(0,7)));
@@ -120,41 +119,38 @@ function render() {
       if (!summary.lastSuccess || record.createdAt > summary.lastSuccess.createdAt) summary.lastSuccess = record;
       if (key === today) { summary.dailyEggs += record.eggs; summary.dailySuccess++; }
       if (monthKeys.has(monthKey)) {
-        const month = summary.months.get(monthKey) || { eggs:0, success:0, attempts:0 };
-        month.eggs += record.eggs; month.success++; month.attempts++; summary.months.set(monthKey, month);
+        const month = summary.months.get(monthKey) || { eggs:0, success:0 };
+        month.eggs += record.eggs; month.success++; summary.months.set(monthKey, month);
       }
       const day = summary.days.get(key) || 0; summary.days.set(key, day + record.eggs);
-    }
-    if (key === today) summary.dailyAttempts++;
-    if (record.createdAt >= minimumTime && record.createdAt <= now) summary.recentAttempts++;
-    if (record.createdAt >= minimumTime && record.createdAt <= now && success) summary.recentSuccess++;
-    if (monthKeys.has(monthKey) && !success) {
-      const month = summary.months.get(monthKey) || { eggs:0, success:0, attempts:0 };
-      month.attempts++; summary.months.set(monthKey, month);
     }
   }
   lastSummary = summary;
   $('todayLabel').textContent = `${dayFormatter.format(new Date())} · 今天`;
   $('timezoneLabel').textContent = timezoneName();
-  $('todayCounts').textContent=`${summary.dailySuccess} / ${summary.dailyAttempts}`;
-  $('hoursCounts').textContent=`${summary.recentSuccess} / ${summary.recentAttempts}`;
+  $('todayCounts').textContent=`${summary.dailySuccess}`;
   const best = summary.best;
   $('singleBest').textContent=best ? formatEggs(best.eggs) : 0; $('singleBestTime').textContent=best ? fullFormatter.format(new Date(best.createdAt)) : '暂无成功记录';
-  $('todayEggs').textContent=formatEggs(summary.dailyEggs); $('todayAverage').textContent=summary.dailySuccess ? formatAverage(summary.dailyEggs/summary.dailySuccess) : '—';
-  $('totalEggs').textContent=formatEggs(summary.totalEggs); $('totalCounts').textContent=`${summary.totalSuccess} / ${records.length}`;
+  $('todayEggs').textContent=formatEggs(summary.dailyEggs); updateRollingStats();
+  $('totalEggs').textContent=formatEggs(summary.totalEggs); $('totalCounts').textContent=`${summary.totalSuccess}`;
   renderHistory(); renderLastRecord(summary.lastSuccess); renderMonthAndChart(now, summary); updateClock();
 }
 
 function updateRollingStats() {
   const now = Date.now(); const minimumTime = now - 24*60*60*1000;
-  let attempts = 0; let successes = 0;
+  const hourStart = zonedDateTimeToTimestamp(localDateTimeValue(now).slice(0,13) + ':00');
+  let successes = 0;
+  let hourSuccesses = 0;
   for (const record of records) {
     if (record.createdAt < minimumTime) break;
     if (record.createdAt > now) continue;
-    attempts++;
     if (isSuccess(record)) successes++;
+    if (record.createdAt >= hourStart) {
+      if (isSuccess(record)) hourSuccesses++;
+    }
   }
-  $('hoursCounts').textContent = `${successes} / ${attempts}`;
+  $('hoursCounts').textContent = `${successes}`;
+  $('currentHourCounts').textContent = `${hourSuccesses}`;
 }
 
 function renderHistory() {
